@@ -192,8 +192,10 @@ rollback/state-compatibility boundary。Characterization fixture 是临时迁移
 
 TypeScript Effect algebra、settlement 语义、Turn-journal interpretation、durable
 checkpoint effect、runtime lifecycle、packaging、upgrade fingerprint 与 boundary
-decoder 基础都已进入 `main`。从清理角度看，这一阶段尚未完全结束：Python 的
-细粒度 settlement surface 是兑现阶段的首要目标。
+decoder 基础都已进入 `main`。从清理角度看，这一阶段已完成：Python 的细粒度
+settlement surface 已删除，effect-ref replay 由 native quota transaction 负责。
+剩余的 coarse readback/projection facade 属于带有明确 caller 迁移条件的 Stage 2B
+工作。
 
 ### Stage 2A — Bounded rule-owner 证明（已交付；不再复制该模式）
 
