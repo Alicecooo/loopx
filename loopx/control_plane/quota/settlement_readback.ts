@@ -238,9 +238,15 @@ function findSpend(
 ): JsonObject | null {
   return [...runs].reverse().find((run) =>
     run.classification === "quota_slot_spent" &&
-    String(run.turn_instance_id ?? "") === identity.turn_instance_id &&
-    runMatchesBinding(run, identity) &&
-    normalizeAgentId(run.agent_id) === identity.agent_id
+    String(run.goal_id ?? "") === identity.goal_id &&
+    normalizeAgentId(run.agent_id) === identity.agent_id &&
+    (
+      (String(run.turn_instance_id ?? "") === identity.turn_instance_id &&
+        runMatchesBinding(run, identity)) ||
+      // Older quota commit rows predate persisted turn bindings. Their
+      // exact effect ref is the durable identity for this replay path.
+      String(run.effect_ref ?? "") === `${identity.effect_id}#quota_spend`
+    )
   ) ?? null;
 }
 

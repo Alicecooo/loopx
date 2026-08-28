@@ -192,6 +192,24 @@ test("keeps partial settlement fail-closed without losing durable facts", async 
   assert.equal((result.writeback_run as any).delivery_outcome, "outcome_progress");
 });
 
+test("recovers legacy quota commit rows by exact effect ref", async () => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
+    `${JSON.stringify({
+      classification: "quota_slot_spent",
+      goal_id: goalId,
+      agent_id: agentId,
+      effect_ref: `${identity.effect_id}#quota_spend`,
+    })}\n`,
+  );
+
+  const result = await readQuotaSettlement(request(runtimeRoot));
+
+  assert.equal((result.spend_run as any).effect_ref, `${identity.effect_id}#quota_spend`);
+  assert.equal((result.spend as any).result.failure.kind, "receipt_missing");
+});
+
 test("rejects a guard bound to another Todo", async () => {
   const runtimeRoot = await fixture();
 
