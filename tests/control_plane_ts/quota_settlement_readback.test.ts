@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -192,6 +192,22 @@ test("keeps partial settlement fail-closed without losing durable facts", async 
   assert.equal((result.writeback_run as any).delivery_outcome, "outcome_progress");
 });
 
+test("rejects non-ENOENT settlement readback I/O failures", async (t) => {
+  const runtimeRoot = await fixture();
+  const indexPath = join(runtimeRoot, "goals", goalId, "runs", "index.jsonl");
+  await rm(indexPath);
+  await mkdir(indexPath);
+
+  await assert.rejects(
+    readQuotaSettlement(request(runtimeRoot)),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "EISDIR",
+  );
+});
+
 test("recovers legacy quota commit rows by exact effect ref", async () => {
   const runtimeRoot = await fixture();
   await appendFile(
@@ -208,6 +224,27 @@ test("recovers legacy quota commit rows by exact effect ref", async () => {
 
   assert.equal((result.spend_run as any).effect_ref, `${identity.effect_id}#quota_spend`);
   assert.equal((result.spend as any).result.failure.kind, "receipt_missing");
+});
+
+test("rejects a writeback run persisted under another goal", async (t) => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
+    `${JSON.stringify({
+      classification: "state_refreshed",
+      delivery_outcome: "outcome_progress",
+      goal_id: "other-goal",
+      agent_id: agentId,
+      todo_id: todoId,
+      turn_instance_id: turnId,
+      settlement_identity: identity,
+    })}\n`,
+  );
+
+  const result = await readQuotaSettlement(request(runtimeRoot));
+
+  assert.equal(result.writeback_run, null);
+  assert.equal((result.writeback as any).result.failure.kind, "writeback_missing");
 });
 
 test("rejects a guard bound to another Todo", async () => {

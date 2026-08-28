@@ -133,8 +133,16 @@ async function readJsonLines(path: string, schemaVersion?: string): Promise<Json
   let content: string;
   try {
     content = await readFile(path, "utf8");
-  } catch {
-    return [];
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return [];
+    }
+    throw error;
   }
   const records: JsonObject[] = [];
   for (const [index, line] of content.split(/\r?\n/).entries()) {
@@ -228,6 +236,7 @@ function findWriteback(
   identity: SettlementIdentity,
 ): JsonObject | null {
   return [...runs].reverse().find((run) =>
+    String(run.goal_id ?? "") === identity.goal_id &&
     String(run.turn_instance_id ?? "") === identity.turn_instance_id &&
     runMatchesBinding(run, identity) &&
     normalizeAgentId(run.agent_id) === identity.agent_id &&

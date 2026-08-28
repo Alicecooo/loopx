@@ -635,6 +635,7 @@ function matchingIndexRecord(
   effectId: string,
 ): JsonObject | null {
   for (const record of [...records].reverse()) {
+    if (record.classification !== QUOTA_SLOT_SPENT_CLASSIFICATION) continue;
     const metadata = jsonObject(record.quota_spend_commit);
     if (metadata?.effect_id === effectId) return record;
     if (record.effect_ref === effectId) return record;

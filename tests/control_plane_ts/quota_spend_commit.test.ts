@@ -244,6 +244,36 @@ test("native replay validates legacy rows by goal and agent", async (t) => {
   }
 });
 
+test("native replay ignores non-quota rows that reuse an effect identity", async (t) => {
+  const runtimeRoot = await tempRuntime(t);
+  const runsDir = join(runtimeRoot, "goals", goalId, "runs");
+  await mkdir(runsDir, { recursive: true });
+  await writeFile(
+    join(runsDir, "index.jsonl"),
+    `${JSON.stringify({
+      classification: "state_refreshed",
+      goal_id: goalId,
+      agent_id: "codex-main-control",
+      effect_ref: "cross-classification-effect",
+      quota_spend_commit: { effect_id: "cross-classification-effect" },
+    })}\n`,
+  );
+
+  const replay = await evaluateQuotaSpendCommit({
+    schema_version: QUOTA_SPEND_COMMIT_REQUEST_SCHEMA,
+    operation: "replay",
+    runtime_root: runtimeRoot,
+    goal_id: goalId,
+    effect_id: "cross-classification-effect",
+    resolved_agent_id: "codex-main-control",
+  });
+
+  assert.equal(replay.status, "preview");
+  assert.equal(replay.replayed, false);
+  assert.equal(replay.payload.replay_found, false);
+  assert.match(replay.reason, /replay was not found/);
+});
+
 test("prepared transaction repairs partial artifacts exactly once", async (t) => {
   const runtimeRoot = await tempRuntime(t);
   const params = request(runtimeRoot);
