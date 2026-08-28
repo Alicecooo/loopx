@@ -247,6 +247,47 @@ test("rejects a writeback run persisted under another goal", async (t) => {
   assert.equal((result.writeback as any).result.failure.kind, "writeback_missing");
 });
 
+test("does not pair a writeback run from another settlement effect", async () => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
+    `${JSON.stringify({
+      classification: "state_refreshed",
+      delivery_outcome: "outcome_progress",
+      goal_id: goalId,
+      agent_id: agentId,
+      todo_id: todoId,
+      turn_instance_id: turnId,
+      settlement_identity: { ...identity, effect_id: "other-effect" },
+    })}\n`,
+  );
+
+  const result = await readQuotaSettlement(request(runtimeRoot));
+
+  assert.equal(result.writeback_run, null);
+  assert.equal((result.writeback as any).result.failure.kind, "writeback_missing");
+});
+
+test("does not pair a spend run from another settlement effect", async () => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
+    `${JSON.stringify({
+      classification: "quota_slot_spent",
+      goal_id: goalId,
+      agent_id: agentId,
+      todo_id: todoId,
+      turn_instance_id: turnId,
+      effect_ref: "other-effect#quota_spend",
+    })}\n`,
+  );
+
+  const result = await readQuotaSettlement(request(runtimeRoot));
+
+  assert.equal(result.spend_run, null);
+  assert.equal((result.spend as any).result.failure.kind, "receipt_missing");
+});
+
 test("rejects a guard bound to another Todo", async () => {
   const runtimeRoot = await fixture();
 
@@ -428,6 +469,32 @@ test("fails closed on malformed settlement JSONL", async () => {
   await appendFile(
     join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
     '{"classification":"quota_slot_spent"\n',
+  );
+
+  await assert.rejects(
+    readQuotaSettlement(request(runtimeRoot)),
+    /settlement readback line 2 is malformed/,
+  );
+});
+
+test("fails closed on valid JSON with an invalid settlement record shape", async () => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
+    "[]\n",
+  );
+
+  await assert.rejects(
+    readQuotaSettlement(request(runtimeRoot)),
+    /settlement readback line 2 is malformed/,
+  );
+});
+
+test("fails closed on a settlement event schema mismatch", async () => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "rollout-event-log.jsonl"),
+    `${JSON.stringify({ schema_version: "future_rollout_event_v1" })}\n`,
   );
 
   await assert.rejects(
