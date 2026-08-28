@@ -303,7 +303,23 @@ projection, replay helper, and public runtime handlers for those implementation
 leaves. The remaining Python Todo facade owns transport, external command
 execution, source compare-and-swap, legacy response projection, and the actual
 Markdown/event write. It exits when those writers and the CLI move into the
-native TS transaction. The remaining fine-grained Turn facade exits after
+native TS transaction. This Stage 1 settlement-facade cleanup removes
+`find_settlement_writeback`, `find_settlement_step_event`, and their private
+`_readback_for_identity` forwarding layer. The four settlement/recovery caller
+sites in `turn.py` now consume the existing `QuotaSettlementReadback`
+`writeback_run`, `spend_run`, `writeback_event`, `spend_event`, and
+`completion_event` fields directly. No bridge, schema, or runtime handler was
+added. Happy-path quota-spend observation, quota-spend recovery, and
+terminal-closeout recovery each keep one `quota.settlement.read`
+request/response. Writeback recovery now uses one aggregate read instead of
+the two former fine-grained reads, so only that path changes its cross-runtime
+round-trip count, from 2 to 1; the other paths remain unchanged. The only
+remaining settlement-run facade is
+`find_quota_spend_run_by_effect_ref`, used by `quota.py:1235` for effect-ref
+replay before a Turn identity exists. It can be removed only after that path
+can perform the same-agent fail-closed replay check through an identity-bound
+aggregate readback or a native quota transaction. The remaining fine-grained
+Turn facade exits after
 quota and host-adapter callers move to their own coarse transactions. The
 task-lease Python facade now contains only transport, the atomic provider, and
 legacy CLI projection; it exits when lease persistence and the task-lease CLI

@@ -260,7 +260,20 @@ lock。Todo cutover 删除了 Python state-evaluation dataclass、local identity
 replay helper，以及这些 implementation leaf 的 public runtime handler。剩余 Python
 Todo facade 只拥有 transport、external command execution、source compare-and-swap、
 legacy response projection 与实际 Markdown/event write；当 writer 与 CLI 进入 native
-TS transaction 后即可退出。剩余细粒度 Turn facade 则在 quota 与 host-adapter
+TS transaction 后即可退出。本次 Stage 1 settlement facade 清理已删除
+`find_settlement_writeback`、`find_settlement_step_event` 及其私有
+`_readback_for_identity` 转发层；`turn.py` 的四个 settlement/recovery caller
+现在直接消费既有 `QuotaSettlementReadback` 的 `writeback_run`、`spend_run`、
+`writeback_event`、`spend_event` 与 `completion_event` 字段。没有新增 bridge、
+schema 或 runtime handler；happy path 的 quota-spend observation、quota-spend
+recovery 与 terminal-closeout recovery 均保持一次
+`quota.settlement.read` request/response。writeback recovery 则由原先两次
+细粒度读取降为一次 aggregate read，因此只有该路径的跨 runtime round-trip
+从 2 降为 1，其余路径保持不变。唯一剩余的 settlement run facade 是
+`find_quota_spend_run_by_effect_ref`，由 `quota.py:1235` 在尚未解析 Turn identity
+的 effect-ref replay 路径使用；只有当该路径能从 identity-bound aggregate readback
+或 native quota transaction 完成同 agent 的 fail-closed replay 校验后，才能删除它。
+剩余细粒度 Turn facade 则在 quota 与 host-adapter
 caller 进入各自 coarse transaction 后退出。Task-lease Python facade 现在只包含
 transport、atomic provider 与 legacy CLI projection；当 lease persistence 与
 task-lease CLI 在 native TS transaction 中运行时即可退出。Vision checkpointing

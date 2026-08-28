@@ -72,8 +72,6 @@ __all__ = [
     "build_codex_app_settlement_plan",
     "build_turn_scoped_cli_settlement_plan",
     "find_quota_spend_run_by_effect_ref",
-    "find_settlement_step_event",
-    "find_settlement_writeback",
     "read_heartbeat_settlement",
     "settlement_binding_args",
     "settlement_result_payload",
@@ -210,45 +208,6 @@ def _run_index_records(runtime_root: Path, goal_id: str) -> list[dict[str, Any]]
         if isinstance(record, dict):
             records.append(record)
     return records
-
-
-def find_settlement_writeback(
-    runtime_root: Path,
-    identity: SettlementIdentity,
-) -> dict[str, Any] | None:
-    readback = _readback_for_identity(runtime_root, identity)
-    return readback.writeback_run
-
-
-def _readback_for_identity(
-    runtime_root: Path,
-    identity: SettlementIdentity,
-) -> QuotaSettlementReadback:
-    readback = read_heartbeat_settlement(
-        runtime_root,
-        goal_id=identity.goal_id,
-        agent_id=identity.agent_id,
-        todo_id=identity.todo_id,
-        turn_instance_id=identity.turn_instance_id,
-        replan_obligation_id=identity.replan_obligation_id,
-    )
-    if readback is None:
-        raise RuntimeError("exact settlement readback unexpectedly returned not-found")
-    return readback
-
-
-def find_settlement_step_event(
-    runtime_root: Path,
-    identity: SettlementIdentity,
-    *,
-    event_kind: str,
-) -> dict[str, Any] | None:
-    readback = _readback_for_identity(runtime_root, identity)
-    return {
-        "refresh_state": readback.writeback_event,
-        "quota_spend": readback.spend_event,
-        "todo_complete": readback.completion_event,
-    }.get(event_kind)
 
 
 def find_quota_spend_run_by_effect_ref(
