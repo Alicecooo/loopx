@@ -1240,7 +1240,7 @@ def spend_quota_slot(
         if prior_effect_run is not None:
             prior_agent_id = normalize_todo_claimed_by(prior_effect_run.get("agent_id"))
             requested_agent_id = normalize_todo_claimed_by(agent_id)
-            if requested_agent_id and prior_agent_id != requested_agent_id:
+            if not requested_agent_id or prior_agent_id != requested_agent_id:
                 return {
                     "ok": False,
                     "mode": "spend-slot",
@@ -1248,7 +1248,9 @@ def spend_quota_slot(
                     "appended": False,
                     "goal_id": safe_goal_id,
                     "effect_ref": normalized_effect_ref,
-                    "reason": "effect_ref already belongs to a different agent",
+                    "reason": (
+                        "effect_ref replay requires the same valid agent identity"
+                    ),
                 }
             return {
                 "ok": True,
