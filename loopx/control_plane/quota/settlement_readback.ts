@@ -137,7 +137,7 @@ async function readJsonLines(path: string, schemaVersion?: string): Promise<Json
     return [];
   }
   const records: JsonObject[] = [];
-  for (const line of content.split(/\r?\n/)) {
+  for (const [index, line] of content.split(/\r?\n/).entries()) {
     if (!line.trim()) continue;
     try {
       const parsed: unknown = JSON.parse(line);
@@ -147,7 +147,10 @@ async function readJsonLines(path: string, schemaVersion?: string): Promise<Json
       }
       records.push(record);
     } catch {
-      // Legacy readers ignore malformed JSONL rows and continue with valid facts.
+      throw new EffectRuntimeRequestError(
+        `settlement readback line ${index + 1} is malformed`,
+        "malformed_settlement_state",
+      );
     }
   }
   return records;

@@ -385,3 +385,16 @@ test("rejects malformed request authority at the runtime boundary", async () => 
     /allow_unbound_binding must be a boolean/,
   );
 });
+
+test("fails closed on malformed settlement JSONL", async () => {
+  const runtimeRoot = await fixture();
+  await appendFile(
+    join(runtimeRoot, "goals", goalId, "runs", "index.jsonl"),
+    '{"classification":"quota_slot_spent"\n',
+  );
+
+  await assert.rejects(
+    readQuotaSettlement(request(runtimeRoot)),
+    /settlement readback line 2 is malformed/,
+  );
+});
