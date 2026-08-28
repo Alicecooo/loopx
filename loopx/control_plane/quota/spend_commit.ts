@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
@@ -82,6 +82,15 @@ interface QuotaSpendCommitRequest {
   preview: JsonObject;
   before: CompactQuotaDecision;
   after: CompactQuotaDecision;
+  resolved_agent_id: string | null;
+}
+
+interface QuotaSpendReplayRequest {
+  schema_version: typeof QUOTA_SPEND_COMMIT_REQUEST_SCHEMA;
+  operation: "replay";
+  runtime_root: string;
+  goal_id: string;
+  effect_id: string;
   resolved_agent_id: string | null;
 }
 
@@ -210,6 +219,31 @@ function compactDecision(value: unknown, label: string): CompactQuotaDecision {
     slot_minutes: decision.slot_minutes ?? null,
     spent_slots: optionalInteger(decision.spent_slots, `${label}.spent_slots`) ?? 0,
     allowed_slots: decision.allowed_slots ?? null,
+  };
+}
+
+function replayRequestObject(value: unknown): QuotaSpendReplayRequest {
+  const request = requiredObject(value, "quota.spend.commit replay params");
+  if (request.schema_version !== QUOTA_SPEND_COMMIT_REQUEST_SCHEMA) {
+    throw new EffectRuntimeRequestError("Quota spend commit request schema mismatch");
+  }
+  if (request.operation !== "replay") {
+    throw new EffectRuntimeRequestError("quota spend replay operation is invalid");
+  }
+  const runtimeRoot = requiredString(request.runtime_root, "runtime_root").trim();
+  if (!isAbsolute(runtimeRoot)) {
+    throw new EffectRuntimeRequestError("runtime_root must be absolute");
+  }
+  return {
+    schema_version: QUOTA_SPEND_COMMIT_REQUEST_SCHEMA,
+    operation: "replay",
+    runtime_root: runtimeRoot,
+    goal_id: safeGoalId(request.goal_id),
+    effect_id: requiredString(request.effect_id, "effect_id").trim(),
+    resolved_agent_id: optionalString(
+      request.resolved_agent_id,
+      "resolved_agent_id",
+    )?.trim() ?? null,
   };
 }
 
@@ -608,6 +642,92 @@ function matchingIndexRecord(
   return null;
 }
 
+async function evaluateQuotaSpendReplay(
+  value: unknown,
+): Promise<QuotaSpendCommitResult> {
+  const request = replayRequestObject(value);
+  const indexPath = join(
+    request.runtime_root,
+    "goals",
+    request.goal_id,
+    "runs",
+    "index.jsonl",
+  );
+  return await withFileMutationLock(indexPath, async () => {
+    const content = await readOptionalText(indexPath);
+    const candidate = matchingIndexRecord(
+      indexRecords(content),
+      request.effect_id,
+    );
+    const basePayload: JsonObject = {
+      ok: false,
+      appended: false,
+      replay_found: candidate !== null,
+      goal_id: request.goal_id,
+      effect_ref: request.effect_id,
+    };
+    if (candidate === null) {
+      return {
+        schema_version: QUOTA_SPEND_COMMIT_RESULT_SCHEMA,
+        effect_id: request.effect_id,
+        status: "preview",
+        written: false,
+        replayed: false,
+        repaired: false,
+        conflict: false,
+        request_digest: sha256(canonicalJson(value)),
+        index_digest: await quotaSpendIndexDigest(indexPath),
+        reason: "quota spend replay was not found",
+        record: null,
+        payload: basePayload,
+      };
+    }
+    const candidateGoalId = String(candidate.goal_id ?? "").trim();
+    const candidateAgentId = String(candidate.agent_id ?? "").trim();
+    if (
+      candidateGoalId !== request.goal_id ||
+      !request.resolved_agent_id ||
+      candidateAgentId !== request.resolved_agent_id
+    ) {
+      return {
+        schema_version: QUOTA_SPEND_COMMIT_RESULT_SCHEMA,
+        effect_id: request.effect_id,
+        status: "preview",
+        written: false,
+        replayed: false,
+        repaired: false,
+        conflict: false,
+        request_digest: sha256(canonicalJson(value)),
+        index_digest: await quotaSpendIndexDigest(indexPath),
+        reason: "quota spend replay requires the same valid agent identity",
+        record: null,
+        payload: { ...basePayload, reason: "agent identity mismatch" },
+      };
+    }
+    return {
+      schema_version: QUOTA_SPEND_COMMIT_RESULT_SCHEMA,
+      effect_id: request.effect_id,
+      status: "replayed",
+      written: false,
+      replayed: true,
+      repaired: false,
+      conflict: false,
+      request_digest: sha256(canonicalJson(value)),
+      index_digest: await quotaSpendIndexDigest(indexPath),
+      reason: "quota spend replayed for the same provider effect",
+      record: candidate,
+      payload: {
+        ...candidate,
+        ...basePayload,
+        ok: true,
+        idempotent_replay: true,
+        agent_id: candidateAgentId,
+        reason: "quota spend replayed for the same provider effect",
+      },
+    };
+  });
+}
+
 function indexRecordFor(
   request: QuotaSpendCommitRequest,
   record: JsonObject,
@@ -932,6 +1052,10 @@ async function ensureReceiptArtifacts(
 export async function evaluateQuotaSpendCommit(
   value: unknown,
 ): Promise<QuotaSpendCommitResult> {
+  const rawRequest = requiredObject(value, "quota.spend.commit params");
+  if (rawRequest.operation === "replay") {
+    return await evaluateQuotaSpendReplay(rawRequest);
+  }
   const request = requestObject(value);
   const fingerprint = requestDigest(request);
   const record = buildSpendRecord(request, fingerprint);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   readFile,
+  mkdir,
   mkdtemp,
   readdir,
   rm,
@@ -201,6 +202,46 @@ test("commit owns JSON, Markdown, index, and exact-effect replay", async (t) => 
   assert.equal(replayed.replayed, true);
   assert.equal(replayed.payload.appended, false);
   assert.equal((await readFile(indexPath, "utf8")).trim().split("\n").length, 1);
+});
+
+test("native replay validates legacy rows by goal and agent", async (t) => {
+  const runtimeRoot = await tempRuntime(t);
+  const runsDir = join(runtimeRoot, "goals", goalId, "runs");
+  await mkdir(runsDir, { recursive: true });
+  await writeFile(
+    join(runsDir, "index.jsonl"),
+    `${JSON.stringify({
+      classification: "quota_slot_spent",
+      goal_id: goalId,
+      agent_id: "codex-main-control",
+      effect_ref: "legacy-effect-1",
+    })}\n`,
+  );
+
+  const replay = await evaluateQuotaSpendCommit({
+    schema_version: QUOTA_SPEND_COMMIT_REQUEST_SCHEMA,
+    operation: "replay",
+    runtime_root: runtimeRoot,
+    goal_id: goalId,
+    effect_id: "legacy-effect-1",
+    resolved_agent_id: "codex-main-control",
+  });
+  assert.equal(replay.status, "replayed");
+  assert.equal(replay.payload.idempotent_replay, true);
+
+  for (const resolvedAgentId of [null, "codex-other-control"]) {
+    const rejected = await evaluateQuotaSpendCommit({
+      schema_version: QUOTA_SPEND_COMMIT_REQUEST_SCHEMA,
+      operation: "replay",
+      runtime_root: runtimeRoot,
+      goal_id: goalId,
+      effect_id: "legacy-effect-1",
+      resolved_agent_id: resolvedAgentId,
+    });
+    assert.equal(rejected.payload.ok, false);
+    assert.equal(rejected.payload.replay_found, true);
+    assert.match(rejected.reason, /same valid agent identity/);
+  }
 });
 
 test("prepared transaction repairs partial artifacts exactly once", async (t) => {

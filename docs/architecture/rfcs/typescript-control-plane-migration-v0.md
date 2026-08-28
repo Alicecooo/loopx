@@ -313,12 +313,12 @@ added. Happy-path quota-spend observation, quota-spend recovery, and
 terminal-closeout recovery each keep one `quota.settlement.read`
 request/response. Writeback recovery now uses one aggregate read instead of
 the two former fine-grained reads, so only that path changes its cross-runtime
-round-trip count, from 2 to 1; the other paths remain unchanged. The only
-remaining settlement-run facade is
-`find_quota_spend_run_by_effect_ref`, used by `quota.py:1235` for effect-ref
-replay before a Turn identity exists. It can be removed only after that path
-can perform the same-agent fail-closed replay check through an identity-bound
-aggregate readback or a native quota transaction. The remaining fine-grained
+round-trip count, from 2 to 1; the other paths remain unchanged. The
+identity-less effect-ref replay path now uses the existing native
+`quota.spend.commit` transaction for locked index lookup and same-agent
+fail-closed validation, including legacy rows without a transaction receipt;
+the Python `find_quota_spend_run_by_effect_ref` reader and its index parsing
+layer have been deleted. The remaining fine-grained
 Turn facade exits after
 quota and host-adapter callers move to their own coarse transactions. The
 task-lease Python facade now contains only transport, the atomic provider, and

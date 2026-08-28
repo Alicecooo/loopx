@@ -269,10 +269,10 @@ schema 或 runtime handler；happy path 的 quota-spend observation、quota-spen
 recovery 与 terminal-closeout recovery 均保持一次
 `quota.settlement.read` request/response。writeback recovery 则由原先两次
 细粒度读取降为一次 aggregate read，因此只有该路径的跨 runtime round-trip
-从 2 降为 1，其余路径保持不变。唯一剩余的 settlement run facade 是
-`find_quota_spend_run_by_effect_ref`，由 `quota.py:1235` 在尚未解析 Turn identity
-的 effect-ref replay 路径使用；只有当该路径能从 identity-bound aggregate readback
-或 native quota transaction 完成同 agent 的 fail-closed replay 校验后，才能删除它。
+从 2 降为 1，其余路径保持不变。尚未绑定 identity 的 effect-ref replay 路径现在
+通过既有 native `quota.spend.commit` transaction 在锁内读取 index，并完成同 agent
+的 fail-closed 校验，也兼容没有 transaction receipt 的旧记录；Python 的
+`find_quota_spend_run_by_effect_ref` reader 及其 index parsing layer 已删除。
 剩余细粒度 Turn facade 则在 quota 与 host-adapter
 caller 进入各自 coarse transaction 后退出。Task-lease Python facade 现在只包含
 transport、atomic provider 与 legacy CLI projection；当 lease persistence 与
